@@ -798,6 +798,19 @@ impl MacWindow {
                 native_window.setTitleVisibility_(NSWindowTitleVisibility::NSWindowTitleHidden);
             }
 
+            #[cfg(macos_sdk_26)]
+            if titlebar.is_some()
+                && is_macos_version_at_least(NSOperatingSystemVersion::new(26, 0, 0))
+            {
+                let toolbar: id = msg_send![class!(NSToolbar), alloc];
+                let toolbar: id =
+                    msg_send![toolbar, initWithIdentifier: ns_string("zed_main_toolbar")];
+                let _: () = msg_send![toolbar, setShowsBaselineSeparator: NO];
+                let _: () = msg_send![native_window, setToolbar: toolbar];
+                // NSWindowToolbarStyle.unified = 3
+                let _: () = msg_send![native_window, setToolbarStyle: 3_isize];
+            }
+
             native_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
             native_view.setWantsBestResolutionOpenGLSurface_(YES);
 
@@ -1362,17 +1375,53 @@ impl PlatformWindow for MacWindow {
                 } else if this.blurred_view.is_none() {
                     let content_view = this.native_window.contentView();
                     let frame = NSView::bounds(content_view);
-                    let mut blur_view: id = msg_send![BLURRED_VIEW_CLASS, alloc];
-                    blur_view = NSView::initWithFrame_(blur_view, frame);
-                    blur_view.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
 
-                    let _: () = msg_send![
-                        content_view,
-                        addSubview: blur_view
-                        positioned: NSWindowOrderingMode::NSWindowBelow
-                        relativeTo: nil
-                    ];
-                    this.blurred_view = Some(blur_view.autorelease());
+                    #[cfg(macos_sdk_26)]
+                    let used_glass = if is_macos_version_at_least(
+                        NSOperatingSystemVersion::new(26, 0, 0),
+                    ) {
+                        if let Some(glass_cls) =
+                            objc::runtime::Class::get("NSGlassEffectView")
+                        {
+                            let glass_view: id = msg_send![glass_cls, alloc];
+                            let glass_view: id =
+                                NSView::initWithFrame_(glass_view, frame);
+                            glass_view.setAutoresizingMask_(
+                                NSViewWidthSizable | NSViewHeightSizable,
+                            );
+
+                            let _: () = msg_send![
+                                content_view,
+                                addSubview: glass_view
+                                positioned: NSWindowOrderingMode::NSWindowBelow
+                                relativeTo: nil
+                            ];
+                            this.blurred_view = Some(glass_view.autorelease());
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
+
+                    #[cfg(not(macos_sdk_26))]
+                    let used_glass = false;
+
+                    if !used_glass {
+                        let mut blur_view: id = msg_send![BLURRED_VIEW_CLASS, alloc];
+                        blur_view = NSView::initWithFrame_(blur_view, frame);
+                        blur_view
+                            .setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable);
+
+                        let _: () = msg_send![
+                            content_view,
+                            addSubview: blur_view
+                            positioned: NSWindowOrderingMode::NSWindowBelow
+                            relativeTo: nil
+                        ];
+                        this.blurred_view = Some(blur_view.autorelease());
+                    }
                 }
             }
         }
@@ -2035,6 +2084,16 @@ extern "C" fn window_will_enter_fullscreen(this: &Object, _: Sel, _: id) {
             lock.native_window.setTitlebarAppearsTransparent_(NO);
         }
     }
+
+    #[cfg(macos_sdk_26)]
+    if is_macos_version_at_least(NSOperatingSystemVersion::new(26, 0, 0)) {
+        unsafe {
+            let toolbar: id = msg_send![lock.native_window, toolbar];
+            if !toolbar.is_null() {
+                let _: () = msg_send![toolbar, setVisible: NO];
+            }
+        }
+    }
 }
 
 extern "C" fn window_will_exit_fullscreen(this: &Object, _: Sel, _: id) {
@@ -2046,6 +2105,16 @@ extern "C" fn window_will_exit_fullscreen(this: &Object, _: Sel, _: id) {
     if is_macos_version_at_least(min_version) && lock.transparent_titlebar {
         unsafe {
             lock.native_window.setTitlebarAppearsTransparent_(YES);
+        }
+    }
+
+    #[cfg(macos_sdk_26)]
+    if is_macos_version_at_least(NSOperatingSystemVersion::new(26, 0, 0)) {
+        unsafe {
+            let toolbar: id = msg_send![lock.native_window, toolbar];
+            if !toolbar.is_null() {
+                let _: () = msg_send![toolbar, setVisible: YES];
+            }
         }
     }
 }

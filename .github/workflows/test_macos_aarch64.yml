@@ -1,0 +1,46 @@
+name: Test macOS aarch64 Build
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+
+jobs:
+  build_macos_aarch64:
+    name: Build (macOS aarch64)
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Install Rust toolchain
+        run: |
+          rustup show
+          rustup target add aarch64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-aarch64-cargo-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            macos-aarch64-cargo-
+
+      - name: Check SDK version
+        run: xcrun --sdk macosx --show-sdk-version
+
+      - name: Build (aarch64)
+        run: cargo build --release --package zed --package cli --target aarch64-apple-darwin
+        env:
+          CXXFLAGS: "-stdlib=libc++"
+
+      - name: Run clippy
+        run: ./script/clippy
