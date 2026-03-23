@@ -2,6 +2,9 @@ name: Test macOS aarch64 Build
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - macos-26-tahoe-visual-updates
 
 env:
   CARGO_TERM_COLOR: always
