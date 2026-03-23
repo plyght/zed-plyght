@@ -40,10 +40,36 @@ jobs:
       - name: Check SDK version
         run: xcrun --sdk macosx --show-sdk-version
 
+      - name: Install cargo-bundle
+        run: cargo install cargo-bundle --git https://github.com/zed-industries/cargo-bundle.git --branch zed-deploy
+
+      - name: Generate licenses
+        run: script/generate-licenses
+
       - name: Build (aarch64)
         run: cargo build --release --package zed --package cli --target aarch64-apple-darwin
         env:
           CXXFLAGS: "-stdlib=libc++"
+          ZED_BUNDLE: "true"
 
-      - name: Run clippy
-        run: ./script/clippy
+      - name: Create .app bundle
+        run: |
+          pushd crates/zed
+          channel=$(<RELEASE_CHANNEL)
+          cp Cargo.toml Cargo.toml.backup
+          sed -i.backup "s/package.metadata.bundle-${channel}/package.metadata.bundle/" Cargo.toml
+          app_path=$(cargo bundle --release --target aarch64-apple-darwin --select-workspace-root | xargs)
+          mv Cargo.toml.backup Cargo.toml
+          popd
+          echo "APP_PATH=${app_path}" >> "$GITHUB_ENV"
+        env:
+          CARGO_BUNDLE_SKIP_BUILD: "true"
+          CXXFLAGS: "-stdlib=libc++"
+          ZED_BUNDLE: "true"
+
+      - name: Upload .app bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: Zed-aarch64-unsigned
+          path: ${{ env.APP_PATH }}
+          retention-days: 7
